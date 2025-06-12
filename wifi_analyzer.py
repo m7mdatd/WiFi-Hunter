@@ -59,16 +59,42 @@ class WiFiAnalyzer:
     
     def get_interfaces(self):
         """الحصول على قائمة واجهات الشبكة"""
+        interfaces = []
+        
+        # الطريقة الأولى: iwconfig
         try:
             result = subprocess.run(['iwconfig'], capture_output=True, text=True, stderr=subprocess.DEVNULL)
-            interfaces = []
             for line in result.stdout.split('\n'):
                 if 'IEEE 802.11' in line:
                     interface = line.split()[0]
                     interfaces.append(interface)
-            return interfaces
         except:
-            return []
+            pass
+        
+        # الطريقة الثانية: البحث في /sys/class/net
+        try:
+            import glob
+            for interface_path in glob.glob('/sys/class/net/*/wireless'):
+                interface = interface_path.split('/')[-2]
+                if interface not in interfaces:
+                    interfaces.append(interface)
+        except:
+            pass
+        
+        # الطريقة الثالثة: ip link show
+        try:
+            result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+            for line in result.stdout.split('\n'):
+                if 'wlan' in line or 'wlp' in line:
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        interface = parts[1].strip().split('@')[0]
+                        if interface not in interfaces:
+                            interfaces.append(interface)
+        except:
+            pass
+        
+        return interfaces
     
     def enable_monitor_mode(self, interface):
         """تفعيل وضع المراقبة"""
@@ -249,6 +275,22 @@ class WiFiAnalyzer:
             interfaces = self.get_interfaces()
             if not interfaces:
                 print(f"{Colors.RED}[!] لم يتم العثور على واجهات WiFi{Colors.END}")
+                print(f"{Colors.YELLOW}[*] نصائح لحل المشكلة:{Colors.END}")
+                print(f"  1. تحقق من واجهات الشبكة: {Colors.CYAN}ip link show{Colors.END}")
+                print(f"  2. فعل واجهة WiFi: {Colors.CYAN}sudo ip link set wlan0 up{Colors.END}")
+                print(f"  3. تثبيت برامج التشغيل: {Colors.CYAN}sudo apt install firmware-iwlwifi{Colors.END}")
+                print(f"  4. إعادة تحميل برامج التشغيل: {Colors.CYAN}sudo modprobe -r iwlwifi && sudo modprobe iwlwifi{Colors.END}")
+                print(f"  5. استخدم USB WiFi adapter إذا كنت في VM{Colors.END}")
+                
+                # محاولة عرض واجهات الشبكة الموجودة
+                print(f"\n{Colors.CYAN}[*] واجهات الشبكة الموجودة:{Colors.END}")
+                try:
+                    result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+                    for line in result.stdout.split('\n'):
+                        if ': ' in line and ('wlan' in line or 'wlp' in line or 'enp' in line or 'eth' in line):
+                            print(f"  {line.strip()}")
+                except:
+                    pass
                 return
             
             print(f"{Colors.CYAN}[*] واجهات WiFi المتاحة:{Colors.END}")
